@@ -3,11 +3,12 @@
 #include <vector>
 #include <cassert>
 #include "../include/arena_allocator.hpp"
+#include "../include/wal_record.hpp"
 
 // A global volatile pointer to trick the compiler into NOT deleting our benchmark loop
 volatile void* volatile_sink;
 
-void test_correctness() {
+void test_arena_correctness() {
     std::cout << "--- Running Correctness Tests ---\n";
     ArenaAllocator arena(1024); // Tiny 1KB arena
 
@@ -26,7 +27,7 @@ void test_correctness() {
     std::cout << "[PASS] All memory alignments and bounds checks are mathematically correct.\n\n";
 }
 
-void test_performance() {
+void test_arena_performance() {
     std::cout << "--- Running Performance Benchmark ---\n";
     const int ITERATIONS = 10'000'000;
     const size_t ALLOC_SIZE = 64; // Typical CPU cache line size
@@ -68,11 +69,52 @@ void test_performance() {
 
     std::cout << "std::malloc     : " << malloc_ns_per_alloc << " nanoseconds / allocation\n";
     std::cout << "ArenaAllocator  : " << arena_ns_per_alloc << " nanoseconds / allocation\n";
-    std::cout << "Speedup         : " << (malloc_ns_per_alloc / arena_ns_per_alloc) << "x faster\n";
+    std::cout << "Speedup         : " << (malloc_ns_per_alloc / arena_ns_per_alloc) << "x faster\n\n";
+}
+
+void test_wal_record() {
+    std::cout << "--- Running WALRecord Layout & Logic Tests ---\n";
+
+    // 1. Verify Compiler is not injecting hidden padding
+    assert(sizeof(WALRecord) == 32 && "WALRecord is not exactly 32 bytes!");
+    assert(alignof(WALRecord) == 8 && "WALRecord alignment is not exactly 8 bytes!");
+
+    // 2. Test Ticker Packing (Standard ticker)
+    uint64_t aapl_packed = pack_ticker("AAPL");
+    assert(unpack_ticker(aapl_packed) == "AAPL" && "Failed to pack/unpack AAPL");
+
+    // 3. Test Ticker Packing (Max length ticker)
+    uint64_t brka_packed = pack_ticker("BRK.A");
+    assert(unpack_ticker(brka_packed) == "BRK.A" && "Failed to pack/unpack BRK.A");
+
+    // 4. Test Ticker Packing (Truncation safety - prevent buffer overflows)
+    uint64_t long_packed = pack_ticker("TOOLONGTICKER");
+    assert(unpack_ticker(long_packed) == "TOOLONGT" && "Failed to safely truncate long ticker");
+
+    // 5. Fast single-cycle integer comparison test
+    assert(aapl_packed != brka_packed && "Tickers should not match!");
+    assert(aapl_packed == pack_ticker("AAPL") && "Identical tickers must map to identical integers!");
+
+    // 6. Integration Test: Allocate an array of WALRecords in our Arena
+    ArenaAllocator arena(1024);
+    // Request memory for 3 records, aligned to 8 bytes
+    WALRecord* records = static_cast<WALRecord*>(arena.allocate(sizeof(WALRecord) * 3, 8));
+
+    // Calculate absolute memory addresses
+    uintptr_t addr1 = reinterpret_cast<uintptr_t>(&records[0]);
+    uintptr_t addr2 = reinterpret_cast<uintptr_t>(&records[1]);
+    uintptr_t addr3 = reinterpret_cast<uintptr_t>(&records[2]);
+
+    // Verify perfect contiguous packing without gaps
+    assert(addr2 - addr1 == 32 && "Array spacing is incorrect, explicit padding failed!");
+    assert(addr3 - addr2 == 32 && "Array spacing is incorrect, explicit padding failed!");
+
+    std::cout << "[PASS] WALRecord memory layout and bitwise string packing are mathematically correct.\n\n";
 }
 
 int main() {
-    test_correctness();
-    test_performance();
+    test_arena_correctness();
+    test_arena_performance();
+    test_wal_record();    
     return 0;
 }
