@@ -1,6 +1,7 @@
 CXX = g++
 # -march=native tells the compiler to use your specific CPU's advanced instructions (like AVX2)
 CXXFLAGS = -std=c++20 -O3 -Wall -Wextra -march=native
+LDFLAGS = -luring
 
 SRC_DIR = src
 INC_DIR = include
@@ -14,7 +15,7 @@ all: $(TARGET)
 
 $(TARGET): $(OBJS)
 	@echo "Linking $(TARGET)..."
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@echo "Compiling $<..."
