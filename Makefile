@@ -31,5 +31,6 @@ run: $(TARGET)
 clean:
 	@echo "Cleaning up..."
 	rm -rf $(BUILD_DIR)
+	rm -f *.log
 
 .PHONY: all run clean
